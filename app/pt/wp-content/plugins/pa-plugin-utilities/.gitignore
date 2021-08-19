@@ -1,0 +1,11 @@
+tests/coverage
+_codecoverage
+_codecoverage-dox.html
+_codecoverage-junit.xml
+_codecoverage.json
+_codecoverage.serialized
+_codecoverage.tap
+_codecoverage.txt
+_codecoverage.xml
+*.zip
+node_modules

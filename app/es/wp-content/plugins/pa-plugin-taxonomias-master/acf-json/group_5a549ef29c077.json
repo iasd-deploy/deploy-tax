@@ -1,0 +1,165 @@
+{
+    "key": "group_5a549ef29c077",
+    "title": "Banner Global",
+    "fields": [
+        {
+            "key": "field_5a54a6b458b6c",
+            "label": "Ativo",
+            "name": "ativo",
+            "type": "true_false",
+            "instructions": "",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "10",
+                "class": "",
+                "id": ""
+            },
+            "message": "",
+            "default_value": 0,
+            "ui": 0,
+            "ui_on_text": "",
+            "ui_off_text": ""
+        },
+        {
+            "key": "field_5a549f2fb31a7",
+            "label": "Título",
+            "name": "titulo",
+            "type": "text",
+            "instructions": "Digite aqui o nome do banner.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "90",
+                "class": "",
+                "id": ""
+            },
+            "default_value": "",
+            "placeholder": "",
+            "prepend": "",
+            "append": "",
+            "maxlength": ""
+        },
+        {
+            "key": "field_5a549ff5b31aa",
+            "label": "Link",
+            "name": "link",
+            "type": "url",
+            "instructions": "",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "70",
+                "class": "",
+                "id": ""
+            },
+            "default_value": "",
+            "placeholder": ""
+        },
+        {
+            "key": "field_5a54a036b31ac",
+            "label": "Cor do banner",
+            "name": "cor_banner",
+            "type": "color_picker",
+            "instructions": "Coloque o código da cor em hexadecimal.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "30",
+                "class": "",
+                "id": ""
+            },
+            "default_value": ""
+        },
+        {
+            "key": "field_5a54a3a9e35c1",
+            "label": "Imagem banner Large",
+            "name": "imagem_large",
+            "type": "image",
+            "instructions": "",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "100",
+                "class": "",
+                "id": ""
+            },
+            "return_format": "url",
+            "preview_size": "full",
+            "library": "all",
+            "min_width": 940,
+            "min_height": 60,
+            "min_size": "",
+            "max_width": 940,
+            "max_height": 60,
+            "max_size": 1,
+            "mime_types": "jpg"
+        },
+        {
+            "key": "field_5a54a4b5e35c2",
+            "label": "Imagem banner Medium",
+            "name": "imagem_medium",
+            "type": "image",
+            "instructions": "",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "60",
+                "class": "",
+                "id": ""
+            },
+            "return_format": "url",
+            "preview_size": "full",
+            "library": "all",
+            "min_width": 750,
+            "min_height": 60,
+            "min_size": "",
+            "max_width": 750,
+            "max_height": 60,
+            "max_size": 1,
+            "mime_types": "jpg"
+        },
+        {
+            "key": "field_5a54a4dfe35c3",
+            "label": "Imagem banner small",
+            "name": "imagem_small",
+            "type": "image",
+            "instructions": "",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "40",
+                "class": "",
+                "id": ""
+            },
+            "return_format": "url",
+            "preview_size": "full",
+            "library": "all",
+            "min_width": 290,
+            "min_height": 60,
+            "min_size": "",
+            "max_width": 290,
+            "max_height": 60,
+            "max_size": 1,
+            "mime_types": "jpg"
+        }
+    ],
+    "location": [
+        [
+            {
+                "param": "options_page",
+                "operator": "==",
+                "value": "acf-options-options"
+            }
+        ]
+    ],
+    "menu_order": 0,
+    "position": "normal",
+    "style": "default",
+    "label_placement": "top",
+    "instruction_placement": "label",
+    "hide_on_screen": "",
+    "active": 1,
+    "description": "",
+    "modified": 1516195508
+}

@@ -1,0 +1,3 @@
+[submodule "static/js/moment"]
+	path = static/js/moment
+	url = https://github.com/Nextt/moment.git
