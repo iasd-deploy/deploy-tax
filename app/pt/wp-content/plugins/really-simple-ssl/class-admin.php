@@ -393,7 +393,6 @@ class rsssl_admin extends rsssl_front_end
 	    if (!current_user_can($this->capability)) return;
 
         if (isset($_POST['rsssl_recheck_certificate']) || isset($_GET['rsssl_recheck_certificate'])) {
-            error_log("recheck certificate");
 	        delete_transient('rsssl_certinfo');
         }
     }
@@ -512,13 +511,7 @@ class rsssl_admin extends rsssl_front_end
 		_e("Before you migrate, please check for: ", 'really-simple-ssl'); ?>
         <ul>
             <li><?php _e('Http references in your .css and .js files: change any http:// into https://', 'really-simple-ssl'); ?></li>
-            <li><?php _e('Images, stylesheets or scripts from a domain without an SSL certificate: remove them or move to your own server', 'really-simple-ssl'); ?></li><?php
-
-            $backup_link = "https://really-simple-ssl.com/knowledge-base/backing-up-your-site/";
-            $link_open = '<a target="_blank" href="'.$backup_link.'">';
-            $link_close = '</a>';
-            ?>
-            <li><?php printf(__("We strongly recommend to create a %sbackup%s of your site before activating SSL", 'really-simple-ssl'), $link_open, $link_close); ?> </li>
+            <li><?php _e('Images, stylesheets or scripts from a domain without an SSL certificate: remove them or move to your own server', 'really-simple-ssl'); ?></li>
             <li><?php _e("You may need to login in again.", "really-simple-ssl") ?></li>
             <?php
             if (RSSSL()->rsssl_certificate->is_valid()) { ?>
@@ -3156,10 +3149,8 @@ class rsssl_admin extends rsssl_front_end
                 'score' => 5,
                 'output' => array(
                     'set' => array(
-                        'msg' =>__('New feature! HttpOnly Secure cookies have been set automatically!', 'really-simple-ssl'),
-                        'icon' => 'open',
-                        'dismissible' => true,
-                        'plusone' => true,
+                        'msg' =>__('HttpOnly Secure cookies have been set automatically!', 'really-simple-ssl'),
+                        'icon' => 'success',
                         'url' => 'https://really-simple-ssl.com/secure-cookies-with-httponly-secure-and-use_only_cookies/',
                     ),
                     'not-set' => array(
@@ -3222,12 +3213,26 @@ class rsssl_admin extends rsssl_front_end
                     ),
                 ),
             ),
+            'duplicate-ssl-plugins' => array(
+	            'condition'  => array('rsssl_detected_duplicate_ssl_plugin'),
+	            'callback' => '_true_',
+	            'plus_one' => true,
+	            'output' => array(
+		            'true' => array(
+			            'msg' => sprintf(__( 'We have detected the %s plugin on your website.', 'really-simple-ssl' ),rsssl_detected_duplicate_ssl_plugin(true)).'&nbsp;'.__( 'As Really Simple SSL handles all the functionality this plugin provides, we recommend to disable this plugin to prevent unexpected behaviour.', 'really-simple-ssl' ),
+			            'icon' => 'warning',
+			            'dismissible' => true,
+			            'plusone' => true,
+		            ),
+	            ),
+            ),
         );
 
         //on multisite, don't show the notice on subsites.
         if ( is_multisite() && !is_network_admin() ) {
             unset($notices['secure_cookies_set']);
         }
+
         $notices = apply_filters('rsssl_notices', $notices);
         foreach ($notices as $id => $notice) {
             $notices[$id] = wp_parse_args($notice, $notice_defaults);
@@ -3614,7 +3619,6 @@ class rsssl_admin extends rsssl_front_end
      */
 
     public function update_task_toggle_option() {
-
         if (!isset($_POST['token']) || (!wp_verify_nonce($_POST['token'], 'rsssl_nonce'))) {
             return;
         }
@@ -4903,6 +4907,41 @@ if ( !function_exists('rsssl_letsencrypt_wizard_url') ) {
 			return add_query_arg(array('page' => 'rlrsssl_really_simple_ssl', 'tab' => 'letsencrypt'), get_admin_url(get_main_site_id(),'options-general.php') );
 		} else {
 			return add_query_arg(array('page' => 'rlrsssl_really_simple_ssl', 'tab' => 'letsencrypt'), admin_url('options-general.php') );
+		}
+	}
+}
+
+if ( !function_exists('rsssl_detected_duplicate_ssl_plugin')) {
+	function rsssl_detected_duplicate_ssl_plugin( $return_name = false ){
+		$plugin = false;
+		if ( defined('WPLE_VERSION') ){
+			$plugin = "WP Encryption";
+		} elseif( defined('WPSSL_VER') ) {
+			$plugin = "WP Free SSL";
+		} elseif( defined('SSL_ZEN_PLUGIN_VERSION') ) {
+			$plugin = "SSL Zen";
+		} elseif( defined('WPSSL_VER') ) {
+			$plugin = "WP Free SSL";
+		} elseif( defined('SSLFIX_PLUGIN_VERSION') ) {
+			$plugin = "SSL Insecure Content Fixer";
+		} elseif( class_exists('OCSSL',false) ) {
+			$plugin = "One Click SSL";
+		} elseif( class_exists('JSM_Force_SSL',false) ) {
+			$plugin = "JSM's Force HTTP to HTTPS (SSL)";
+		} elseif( function_exists('httpsrdrctn_plugin_init') ) {
+			$plugin = "Easy HTTPS (SSL) Redirection";
+		} elseif( defined('WPSSL_VER') ) {
+			$plugin = "WP Free SSL";
+		} elseif( defined('WPFSSL_OPTIONS_KEY') ) {
+			$plugin = "WP Force SSL";
+		}elseif( defined('ESSL_REQUIRED_PHP_VERSION') ) {
+			$plugin = "EasySSL";
+		}
+
+		if ( $plugin !== false && !$return_name ) {
+			return true;
+		} else {
+			return $plugin;
 		}
 	}
 }
