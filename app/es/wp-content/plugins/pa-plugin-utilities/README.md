@@ -8,6 +8,9 @@ Archive de galerias de videos - /sala-de-prensa/videos (es_ES)
 
 == Changelog ==
 
+== 1.20.2 =
+
+- Colocando filtro para trocar a url de 'deptos.adventistas.org.s3.amazonaws.com' para 'deptos.adventistas.org'.
 
 == 1.20.1 =
 
