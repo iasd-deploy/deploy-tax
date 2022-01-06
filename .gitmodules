@@ -1,0 +1,6 @@
+[submodule "app/pt/wp-content/plugins/pa-register-taxonomy"]
+	path = app/pt/wp-content/plugins/pa-register-taxonomy
+	url = https://github.com/igrejaadventista/pa-register-taxonomy.git
+[submodule "app/es/wp-content/plugins/pa-register-taxonomy"]
+	path = app/es/wp-content/plugins/pa-register-taxonomy
+	url = https://github.com/igrejaadventista/pa-register-taxonomy.git
