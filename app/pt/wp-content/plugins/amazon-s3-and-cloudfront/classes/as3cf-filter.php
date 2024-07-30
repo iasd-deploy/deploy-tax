@@ -1,5 +1,8 @@
 <?php
 
+use DeliciousBrains\WP_Offload_Media\Items\Item;
+use DeliciousBrains\WP_Offload_Media\Items\Media_Library_Item;
+
 abstract class AS3CF_Filter {
 
 	/**
@@ -18,19 +21,18 @@ abstract class AS3CF_Filter {
 	const OPTION_CACHE_GROUP = 'option_amazonS3_cache';
 
 	/**
+	 * @var array IDs which have already been purged this request.
+	 */
+	private $purged_ids = array();
+
+	/**
 	 * @var Amazon_S3_And_CloudFront
 	 */
 	protected $as3cf;
-
 	/**
 	 * @var array
 	 */
 	protected $query_cache = array();
-
-	/**
-	 * @var array IDs which have already been purged this request.
-	 */
-	protected static $purged_ids = array();
 
 	/**
 	 * Constructor
@@ -40,17 +42,22 @@ abstract class AS3CF_Filter {
 	public function __construct( $as3cf ) {
 		$this->as3cf = $as3cf;
 
-		// Purge on attachment delete
-		add_action( 'delete_attachment', array( $this, 'purge_cache_on_attachment_delete' ) );
-
 		$this->init();
 	}
 
 	/**
-	 * Initialize the filter.
+	 * Initialize the filter handler.
 	 */
 	protected function init() {
-		// Optionally override in a sub-class.
+		add_action( 'as3cf_setup', array( $this, 'setup' ) );
+	}
+
+	/**
+	 * Set up the filter handler.
+	 */
+	public function setup() {
+		// Purge on attachment delete.
+		add_action( 'delete_attachment', array( $this, 'purge_cache_on_attachment_delete' ) );
 	}
 
 	/**
@@ -72,7 +79,11 @@ abstract class AS3CF_Filter {
 		}
 
 		foreach ( $value as $key => $attachment ) {
-			$url = $this->get_url( $attachment['attachment_id'] );
+			$item_source = array(
+				'id'          => $attachment['attachment_id'],
+				'source_type' => Media_Library_Item::source_type(),
+			);
+			$url         = $this->get_url( $item_source );
 
 			if ( $url ) {
 				$value[ $key ]['file'] = $url;
@@ -113,7 +124,11 @@ abstract class AS3CF_Filter {
 	 * @return stdClass
 	 */
 	public function filter_header_image_data( $value, $old_value = false ) {
-		$url = $this->get_url( $value->attachment_id );
+		$item_source = array(
+			'id'          => $value->attachment_id,
+			'source_type' => Media_Library_Item::source_type(),
+		);
+		$url         = $this->get_url( $item_source );
 
 		if ( $url ) {
 			$value->url           = $url;
@@ -148,16 +163,17 @@ abstract class AS3CF_Filter {
 	/**
 	 * Handle widget instances.
 	 *
-	 * @param array     $instance
-	 * @param WP_Widget $class
+	 * @param array $instance
 	 *
 	 * @return array
 	 */
-	protected function handle_widget( $instance, $class ) {
-		if ( empty( $instance ) ) {
+	protected function handle_widget( $instance ) {
+		if ( empty( $instance ) || ! is_array( $instance ) ) {
 			return $instance;
 		}
 
+		$cache        = $this->get_option_cache();
+		$to_cache     = array();
 		$update_cache = true;
 
 		// Editing widgets in Customizer throws an error if more than one option record is updated.
@@ -166,82 +182,15 @@ abstract class AS3CF_Filter {
 			$update_cache = false;
 		}
 
-		if ( $class instanceof WP_Widget_Media ) {
-			return $this->filter_media_widget( $instance, $update_cache );
-		}
-
-		if ( $class instanceof WP_Widget_Text ) {
-			return $this->filter_text_widget( $instance, $update_cache );
-		}
-
-		if ( $class instanceof WP_Widget_Custom_HTML ) {
-			return $this->filter_custom_html_widget( $instance, $update_cache );
-		}
-
-		return $instance;
-	}
-
-	/**
-	 * Filter media widget.
-	 *
-	 * @param array $instance
-	 * @param bool  $update_cache
-	 *
-	 * @return array
-	 */
-	protected function filter_media_widget( $instance, $update_cache ) {
-		$cache    = $this->get_option_cache();
-		$to_cache = array();
-
 		foreach ( $instance as $key => $value ) {
 			if ( empty( $value ) ) {
 				continue;
 			}
 
-			if ( AS3CF_Utils::is_url( $value ) ) {
+			if ( in_array( $key, array( 'text', 'content' ) ) || AS3CF_Utils::is_url( $value ) ) {
 				$instance[ $key ] = $this->process_content( $value, $cache, $to_cache );
 			}
 		}
-
-		if ( $update_cache ) {
-			$this->maybe_update_option_cache( $to_cache );
-		}
-
-		return $instance;
-	}
-
-	/**
-	 * Filter text widget.
-	 *
-	 * @param array $instance
-	 * @param bool  $update_cache
-	 *
-	 * @return array
-	 */
-	protected function filter_text_widget( $instance, $update_cache ) {
-		$cache            = $this->get_option_cache();
-		$to_cache         = array();
-		$instance['text'] = $this->process_content( $instance['text'], $cache, $to_cache );
-
-		if ( $update_cache ) {
-			$this->maybe_update_option_cache( $to_cache );
-		}
-
-		return $instance;
-	}
-
-	/**
-	 * Filter custom html widget.
-	 *
-	 * @param array $instance
-	 * @param bool  $update_cache
-	 *
-	 * @return array
-	 */
-	protected function filter_custom_html_widget( $instance, $update_cache ) {
-		$cache               = $this->get_option_cache();
-		$to_cache            = array();
-		$instance['content'] = $this->process_content( $instance['content'], $cache, $to_cache );
 
 		if ( $update_cache ) {
 			$this->maybe_update_option_cache( $to_cache );
@@ -326,8 +275,8 @@ abstract class AS3CF_Filter {
 			return $url_pairs;
 		}
 
-		$matches        = array_unique( $matches[0] );
-		$attachment_ids = array();
+		$matches      = array_unique( $matches[0] );
+		$item_sources = array();
 
 		foreach ( $matches as $image ) {
 			if ( ! preg_match( '/wp-image-([0-9]+)/i', $image, $class_id ) || ! isset( $class_id[1] ) ) {
@@ -342,33 +291,40 @@ abstract class AS3CF_Filter {
 
 			$url = $src[1];
 
+			if ( ! AS3CF_Utils::usable_url( $url ) ) {
+				continue;
+			}
+
 			if ( ! $this->url_needs_replacing( $url ) ) {
 				// URL already correct, skip
 				continue;
 			}
 
-			$url = AS3CF_Utils::reduce_url( $url );
+			$bare_url = AS3CF_Utils::reduce_url( $url );
 
-			$attachment_ids[ $url ] = absint( $class_id[1] );
+			$item_sources[ $bare_url ] = array(
+				'id'          => absint( $class_id[1] ),
+				'source_type' => Media_Library_Item::source_type(),
+			);
 		}
 
-		if ( count( $attachment_ids ) > 1 ) {
+		if ( count( $item_sources ) > 1 ) {
 			/*
 			 * Warm object cache for use with 'get_post_meta()'.
 			 *
 			 * To avoid making a database call for each image, a single query
 			 * warms the object cache with the meta information for all images.
 			 */
-			update_meta_cache( 'post', array_unique( array_values( $attachment_ids ) ) );
+			update_meta_cache( 'post', array_unique( array_column( $item_sources, 'id' ) ) );
 		}
 
-		foreach ( $attachment_ids as $url => $attachment_id ) {
-			if ( ! $this->attachment_id_matches_src( $attachment_id, $url ) ) {
+		foreach ( $item_sources as $url => $item_source ) {
+			if ( ! $this->item_matches_src( $item_source, $url ) ) {
 				// Path doesn't match attachment, skip
 				continue;
 			}
 
-			$this->push_to_url_pairs( $url_pairs, $attachment_id, $url, $to_cache );
+			$this->push_to_url_pairs( $url_pairs, $item_source, $url, $to_cache );
 		}
 
 		return $url_pairs;
@@ -401,63 +357,55 @@ abstract class AS3CF_Filter {
 		foreach ( $matches as $url ) {
 			$url = preg_replace( '/[^a-zA-Z0-9]$/', '', $url );
 
+			if ( ! AS3CF_Utils::usable_url( $url ) ) {
+				continue;
+			}
+
 			if ( ! $this->url_needs_replacing( $url ) ) {
 				// URL already correct, skip
 				continue;
 			}
 
-			$parts = AS3CF_Utils::parse_url( $url );
-
-			if ( ! isset( $parts['path'] ) ) {
-				// URL doesn't have a path, continue
-				continue;
-			}
-
-			if ( ! pathinfo( $parts['path'], PATHINFO_EXTENSION ) ) {
-				// URL doesn't have a file extension, continue
-				continue;
-			}
-
-			$attachment_id = null;
-			$bare_url      = AS3CF_Utils::reduce_url( $url );
+			$item_source = null;
+			$bare_url    = AS3CF_Utils::reduce_url( $url );
 
 			// If attachment ID recently or previously cached, skip full search.
 			if ( isset( $to_cache[ $bare_url ] ) ) {
-				$attachment_id = $to_cache[ $bare_url ];
+				$item_source = $to_cache[ $bare_url ];
 
-				if ( $this->is_failure( $attachment_id ) ) {
+				if ( $this->is_failure( $item_source ) ) {
 					// Attachment ID failure, continue
 					continue;
 				}
 			} elseif ( isset( $cache[ $bare_url ] ) ) {
-				$attachment_id = $cache[ $bare_url ];
+				$item_source = $cache[ $bare_url ];
 
-				if ( $this->is_failure( $attachment_id ) ) {
+				if ( $this->is_failure( $item_source ) ) {
 					// Attachment ID failure, continue
 					continue;
 				}
 			}
 
-			if ( is_null( $attachment_id ) || is_array( $attachment_id ) ) {
+			if ( is_null( $item_source ) || ( is_array( $item_source ) && ! empty( $item_source['timestamp'] ) ) ) {
 				// Attachment ID not cached, need to search by URL.
 				$urls[] = $bare_url;
 			} else {
-				$this->push_to_url_pairs( $url_pairs, $attachment_id, $bare_url, $to_cache );
+				$this->push_to_url_pairs( $url_pairs, $item_source, $bare_url, $to_cache );
 			}
 		}
 
 		if ( ! empty( $urls ) ) {
-			$attachments = $this->get_attachment_ids_from_urls( $urls );
+			$item_sources = $this->get_item_sources_from_urls( $urls );
 
-			foreach ( $attachments as $url => $attachment_id ) {
-				if ( ! $attachment_id ) {
-					// Can't determine attachment ID, continue
+			foreach ( $item_sources as $url => $item_source ) {
+				if ( ! $item_source ) {
+					// Can't determine item ID, continue
 					$this->url_cache_failure( $url, $to_cache );
 
 					continue;
 				}
 
-				$this->push_to_url_pairs( $url_pairs, $attachment_id, $url, $to_cache );
+				$this->push_to_url_pairs( $url_pairs, $item_source, $url, $to_cache );
 			}
 		}
 
@@ -467,7 +415,7 @@ abstract class AS3CF_Filter {
 	/**
 	 * Is failure?
 	 *
-	 * @param mixed $value
+	 * @param array $value
 	 *
 	 * @return bool
 	 */
@@ -488,20 +436,27 @@ abstract class AS3CF_Filter {
 	/**
 	 * Does attachment ID match src?
 	 *
-	 * @param int    $attachment_id
+	 * @param array  $item_source
 	 * @param string $url
 	 *
 	 * @return bool
 	 */
-	protected function attachment_id_matches_src( $attachment_id, $url ) {
-		$meta = get_post_meta( $attachment_id, '_wp_attachment_metadata', true );
+	public function item_matches_src( array $item_source, string $url ): bool {
+		if (
+			Item::is_empty_item_source( $item_source ) ||
+			Media_Library_Item::source_type() !== $item_source['source_type'] ||
+			get_post_type( $item_source['id'] ) !== 'attachment'
+		) {
+			return false;
+		}
+		$meta = get_post_meta( $item_source['id'], '_wp_attachment_metadata', true );
 
 		if ( ! isset( $meta['sizes'] ) ) {
 			// No sizes found, return
 			return false;
 		}
 
-		$base_url = AS3CF_Utils::encode_filename_in_path( AS3CF_Utils::reduce_url( $this->get_base_url( $attachment_id ) ) );
+		$base_url = AS3CF_Utils::encode_filename_in_path( AS3CF_Utils::reduce_url( $this->get_base_url( $item_source ) ) );
 		$basename = wp_basename( $base_url );
 
 		// Add full size URL
@@ -526,31 +481,31 @@ abstract class AS3CF_Filter {
 	 * Push to URL pairs.
 	 *
 	 * @param array  $url_pairs
-	 * @param int    $attachment_id
+	 * @param array  $item_source
 	 * @param string $find
 	 * @param array  $to_cache
 	 */
-	protected function push_to_url_pairs( &$url_pairs, $attachment_id, $find, &$to_cache ) {
+	protected function push_to_url_pairs( &$url_pairs, $item_source, $find, &$to_cache ) {
 		$find_full = AS3CF_Utils::remove_size_from_filename( $find );
 		$find_full = $this->normalize_find_value( $this->as3cf->maybe_remove_query_string( $find_full ) );
 		$find_size = $this->normalize_find_value( $this->as3cf->maybe_remove_query_string( $find ) );
 
 		// Cache find URLs even if no replacement.
-		$to_cache[ $find_full ] = $attachment_id;
+		$to_cache[ $find_full ] = $item_source;
 
 		if ( wp_basename( $find_full ) !== wp_basename( $find_size ) ) {
-			$to_cache[ $find_size ] = $attachment_id;
+			$to_cache[ $find_size ] = $item_source;
 		}
 
-		$replace_full = $this->get_url( $attachment_id );
+		$replace_full = $this->get_url( $item_source );
 
 		// Replacement URL can't be found.
 		if ( ! $replace_full ) {
 			return;
 		}
 
-		$size         = $this->get_size_string_from_url( $attachment_id, $find );
-		$replace_size = $this->get_url( $attachment_id, $size );
+		$size         = $this->get_size_string_from_url( $item_source, $find );
+		$replace_size = $this->get_url( $item_source, $size );
 		$parts        = parse_url( $find );
 
 		if ( ! isset( $parts['scheme'] ) ) {
@@ -570,35 +525,24 @@ abstract class AS3CF_Filter {
 		$replace_full = $this->as3cf->maybe_remove_query_string( $replace_full );
 		$replace_size = $this->as3cf->maybe_remove_query_string( $replace_size );
 
-		$to_cache[ $this->normalize_find_value( $replace_full ) ] = $attachment_id;
-		$to_cache[ $this->normalize_find_value( $replace_size ) ] = $attachment_id;
+		$to_cache[ $this->normalize_find_value( $replace_full ) ] = $item_source;
+		$to_cache[ $this->normalize_find_value( $replace_size ) ] = $item_source;
 	}
 
 	/**
 	 * Get size string from URL.
 	 *
-	 * @param int    $attachment_id
+	 * @param array  $item_source
 	 * @param string $url
 	 *
 	 * @return null|string
 	 */
-	public function get_size_string_from_url( $attachment_id, $url ) {
-		$meta = get_post_meta( $attachment_id, '_wp_attachment_metadata', true );
-
-		if ( empty( $meta['sizes'] ) ) {
-			// No alternative sizes available, return
-			return null;
+	public function get_size_string_from_url( $item_source, $url ) {
+		if ( Item::is_empty_item_source( $item_source ) ) {
+			return false;
 		}
 
-		$basename = AS3CF_Utils::encode_filename_in_path( wp_basename( $this->as3cf->maybe_remove_query_string( $url ) ) );
-
-		foreach ( $meta['sizes'] as $size => $file ) {
-			if ( $basename === AS3CF_Utils::encode_filename_in_path( $file['file'] ) ) {
-				return $size;
-			}
-		}
-
-		return null;
+		return apply_filters( 'as3cf_get_size_string_from_url_for_item_source', Item::primary_object_key(), $url, $item_source );
 	}
 
 	/**
@@ -659,11 +603,12 @@ abstract class AS3CF_Filter {
 	/**
 	 * Get post cache
 	 *
-	 * @param null|int|WP_Post $post Optional. Post ID or post object. Defaults to current post.
+	 * @param null|int|WP_Post $post           Optional. Post ID or post object. Defaults to current post.
+	 * @param bool             $transform_ints Optional. If true (default), convert integer hits to array with id and source_type keys. If false, return integer hits as integers
 	 *
-	 * @return array
+	 * @return array|int
 	 */
-	public function get_post_cache( $post = null ) {
+	public function get_post_cache( $post = null, $transform_ints = true ) {
 		$post_id = AS3CF_Utils::get_post_id( $post );
 
 		if ( ! $post_id ) {
@@ -676,8 +621,24 @@ abstract class AS3CF_Filter {
 			$cache = get_post_meta( $post_id, self::CACHE_KEY, true );
 		}
 
-		if ( empty( $cache ) ) {
-			$cache = array();
+		// Data's not what we expected, reset.
+		if ( empty( $cache ) || ! is_array( $cache ) ) {
+			return array();
+		}
+
+		if ( ! $transform_ints ) {
+			return $cache;
+		}
+
+		// Handle old cache items that are stored as plain integers
+		foreach ( $cache as &$cache_item ) {
+			if ( ! is_array( $cache_item ) && is_numeric( $cache_item ) ) {
+				$id         = $cache_item;
+				$cache_item = array(
+					'id'          => $id,
+					'source_type' => Media_Library_Item::source_type(),
+				);
+			}
 		}
 
 		return $cache;
@@ -687,7 +648,7 @@ abstract class AS3CF_Filter {
 	 * Set the cache for the given post.
 	 *
 	 * @param null|int|WP_Post $post Optional. Post ID or post object. Defaults to current post.
-	 * @param                  $data
+	 * @param mixed            $data
 	 */
 	protected function set_post_cache( $post, $data ) {
 		$post_id = AS3CF_Utils::get_post_id( $post );
@@ -707,7 +668,7 @@ abstract class AS3CF_Filter {
 	/**
 	 * Set the option cache with the given data.
 	 *
-	 * @param $data
+	 * @param mixed $data
 	 */
 	protected function set_option_cache( $data ) {
 		if ( wp_using_ext_object_cache() ) {
@@ -727,11 +688,12 @@ abstract class AS3CF_Filter {
 	protected function maybe_update_post_cache( $to_cache, $post_id = false ) {
 		$post_id = AS3CF_Utils::get_post_id( $post_id );
 
-		if ( ! $post_id || empty( $to_cache ) ) {
+		// Data's not what we expected, skip it.
+		if ( ! $post_id || empty( $to_cache ) || ! is_array( $to_cache ) ) {
 			return;
 		}
 
-		$cached = $this->get_post_cache( $post_id );
+		$cached = $this->get_post_cache( $post_id, false );
 		$urls   = static::merge_cache( $cached, $to_cache );
 
 		if ( $urls !== $cached ) {
@@ -751,8 +713,9 @@ abstract class AS3CF_Filter {
 			$cache = get_option( self::CACHE_KEY, array() );
 		}
 
-		if ( empty( $cache ) ) {
-			$cache = array();
+		// Data's not what we expected, reset.
+		if ( empty( $cache ) || ! is_array( $cache ) ) {
+			return array();
 		}
 
 		return $cache;
@@ -764,7 +727,8 @@ abstract class AS3CF_Filter {
 	 * @param array $to_cache
 	 */
 	protected function maybe_update_option_cache( $to_cache ) {
-		if ( empty( $to_cache ) ) {
+		// Data's not what we expected, skip it.
+		if ( empty( $to_cache ) || ! is_array( $to_cache ) ) {
 			return;
 		}
 
@@ -777,14 +741,18 @@ abstract class AS3CF_Filter {
 	}
 
 	/**
-	 * Purge attachment from cache on delete.
+	 * Purge items from cache on delete.
 	 *
 	 * @param int $post_id
 	 */
 	public function purge_cache_on_attachment_delete( $post_id ) {
-		if ( ! in_array( $post_id, self::$purged_ids ) ) {
-			$this->purge_from_cache( $this->get_url( $post_id ) );
-			self::$purged_ids[] = $post_id;
+		if ( ! in_array( $post_id, $this->purged_ids ) ) {
+			$item_source = array(
+				'id'          => $post_id,
+				'source_type' => Media_Library_Item::source_type(),
+			);
+			$this->purge_from_cache( $this->get_url( $item_source ) );
+			$this->purged_ids[] = $post_id;
 		}
 	}
 
@@ -833,7 +801,7 @@ abstract class AS3CF_Filter {
 	 * @return bool
 	 */
 	protected function should_filter_content() {
-		if ( $this->as3cf->is_plugin_setup() && $this->as3cf->get_setting( 'serve-from-s3' ) ) {
+		if ( $this->as3cf->get_setting( 'serve-from-s3' ) ) {
 			return true;
 		}
 
@@ -1044,30 +1012,30 @@ abstract class AS3CF_Filter {
 	/**
 	 * Get URL.
 	 *
-	 * @param int         $attachment_id
-	 * @param null|string $size
+	 * @param int|array   $item_source
+	 * @param null|string $object_key
 	 *
 	 * @return bool|string
 	 */
-	abstract protected function get_url( $attachment_id, $size = null );
+	abstract protected function get_url( $item_source, $object_key = null );
 
 	/**
 	 * Get base URL.
 	 *
-	 * @param int $attachment_id
+	 * @param int|array $item_source
 	 *
 	 * @return string|false
 	 */
-	abstract protected function get_base_url( $attachment_id );
+	abstract protected function get_base_url( $item_source );
 
 	/**
 	 * Get attachment ID from URL.
 	 *
 	 * @param string $url
 	 *
-	 * @return bool|int
+	 * @return array
 	 */
-	abstract protected function get_attachment_id_from_url( $url );
+	abstract public function get_item_source_from_url( $url );
 
 	/**
 	 * Get attachment IDs from URLs.
@@ -1076,7 +1044,7 @@ abstract class AS3CF_Filter {
 	 *
 	 * @return array url => attachment ID (or false)
 	 */
-	abstract protected function get_attachment_ids_from_urls( $urls );
+	abstract protected function get_item_sources_from_urls( $urls );
 
 	/**
 	 * Normalize find value.
